@@ -1,44 +1,34 @@
-#include <ESP32Servo.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoHA.h>  
+#include <DHT.h>
 
-Servo myservo; 
+#define LED_PIN 18
+#define DHTPIN 4
+#define DHTTYPE DHT22
 
 int Valor_POT;
-int Angulo;
-int lastReportedAngle = -1; 
-const int HUMIDITY_THRESHOLD = 1500; // Threshold for "dry soil" (0-4095 range)
+const int HUMIDITY_THRESHOLD = 40.0; 
+bool irrigationActive = false;       
+
+DHT dht(DHTPIN, DHTTYPE);
 
 // WiFi credentials
-#define WIFI_SSID "Wokwi-GUEST" // Replace with your WiFi SSID
+#define WIFI_SSID "Wokwi-GUEST" 
 
-// MQTT broker settings (Home Assistant IP)
-#define MQTT_BROKER "" // Replace with your Home Assistant IP
+#define MQTT_BROKER "172.21.69.246" 
 #define MQTT_PORT 1883
 
-#define DEVICE_ID "esp32_servo"
+#define DEVICE_ID "esp32_simulation"
 
 WiFiClient wifiClient;
 HADevice device(DEVICE_ID);
 HAMqtt mqtt(wifiClient, device);
 
-HASensor servoPositionSensor("servo_position");
-
-HANumber servoControl("servo_control", HANumber::PrecisionP0);
-
-void onServoCommand(HANumeric value, HANumber* sender) {
-  int position = value.toInt8();
-  
-  position = constrain(position, 0, 180);
-  
-  myservo.write(position);
-  
-  servoPositionSensor.setValue(String(position).c_str());
-  
-  Serial.print("Mudar posição do Servo: ");
-  Serial.println(position);
-}
+HASensor lightSensor("light_level");
+HABinarySensor irrigationSensor("irrigation_active");
+HASensor dhtTempSensor("dht_temperature");
+HASensor dhtHumSensor("dht_humidity");
 
 void setup() {
   Serial.begin(115200);
@@ -54,45 +44,56 @@ void setup() {
   Serial.print("Connected to WiFi. IP address: ");
   Serial.println(WiFi.localIP());
 
-  device.setName("ESP32 Simulador de Sistema de Irrigação");
+  device.setName("ESP32 - Sensores Inteligentes");
   device.setSoftwareVersion("1.0.0");
   device.setManufacturer("Sara Santana / Lhayana Vieira");
   device.setModel("ESP32");
 
-  servoPositionSensor.setName("Posição atual do Servo");
-  servoPositionSensor.setUnitOfMeasurement("°");
+  lightSensor.setName("Nível de luz");
+  lightSensor.setUnitOfMeasurement("lux");
 
-  servoControl.setName("Setar posição do Servo");
-  servoControl.setMin(0);
-  servoControl.setMax(180);
-  servoControl.setStep(1);
-  servoControl.onCommand(onServoCommand);
+  irrigationSensor.setName("Sistema de irrigação");
+
+  dhtTempSensor.setName("Temperatura DHT22");
+  dhtTempSensor.setUnitOfMeasurement("°C");
+  dhtHumSensor.setName("Umidade DHT22");
+  dhtHumSensor.setUnitOfMeasurement("%");
 
   mqtt.begin(MQTT_BROKER, MQTT_PORT);
   Serial.println("CONNECTING TO MQTT BROKER");
 
-  myservo.attach(18);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  dht.begin();
 }
 
 void loop() {
   mqtt.loop(); 
-  
   Valor_POT = analogRead(34);
-  
-  // Check if too dry
-  if (Valor_POT < HUMIDITY_THRESHOLD) {
-    Angulo = 180;
-    myservo.write(Angulo);
-  } else {
-    Angulo = 0;
-    myservo.write(Angulo);
+  int lightLevel = map(Valor_POT, 0, 4095, 0, 1000);
+  lightSensor.setValue(String(lightLevel).c_str());
+
+  float dhtHumidity = dht.readHumidity();
+  float dhtTemp = dht.readTemperature();
+  if (!isnan(dhtHumidity)) {
+    dhtHumSensor.setValue(String(dhtHumidity, 1).c_str());
   }
-  
-  if (Angulo != lastReportedAngle) {
-    servoPositionSensor.setValue(String(Angulo).c_str());
-    lastReportedAngle = Angulo;
-    Serial.println(Angulo);
+  if (!isnan(dhtTemp)) {
+    dhtTempSensor.setValue(String(dhtTemp, 1).c_str());
   }
-  
-  delay(20);
+
+  if (!isnan(dhtHumidity) && dhtHumidity < HUMIDITY_THRESHOLD && !irrigationActive) {
+    digitalWrite(LED_PIN, HIGH);
+    irrigationActive = true;
+    irrigationSensor.setState(true);
+    Serial.println("Umidade Baixa: Irrigação Ativada");
+  } 
+  else if (!isnan(dhtHumidity) && dhtHumidity >= HUMIDITY_THRESHOLD && irrigationActive) {
+    digitalWrite(LED_PIN, LOW);
+    irrigationActive = false;
+    irrigationSensor.setState(false);
+    Serial.println("Umidade Suficiente: Irrigação Desativada");
+  }
+  delay(1000);
 }
+
