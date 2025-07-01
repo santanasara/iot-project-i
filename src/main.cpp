@@ -2,6 +2,7 @@
 #include <PubSubClient.h>
 #include <ArduinoHA.h>
 #include <DHT.h>
+#include "config.h"
 
 // --- Pinos ---
 #define LED_PIN 18             // LED verde da irrigação
@@ -19,7 +20,6 @@ DHT dht(DHTPIN, DHTTYPE);
 
 // --- Configurações da Rede ---
 #define WIFI_SSID "Wokwi-GUEST"
-#define MQTT_BROKER "192.168.3.16" // Verifique se este IP ainda é o seu
 #define MQTT_PORT 1883
 #define DEVICE_ID "esp32_simulation"
 

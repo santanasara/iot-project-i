@@ -1,3 +1,4 @@
 homeassistant/
 .pio
 .vscode/
+src/config.h
