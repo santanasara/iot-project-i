@@ -15,6 +15,8 @@ int Valor_POT;
 const int HUMIDITY_THRESHOLD = 40;
 const int LOW_LIGHT_THRESHOLD = 150; // NOVO: Limite para acender o LED vermelho
 bool irrigationActive = false;
+bool lightActive = false;
+
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -30,6 +32,7 @@ HAMqtt mqtt(wifiClient, device);
 // --- Entidades para o Home Assistant ---
 HASensor lightSensor("light_level");
 HABinarySensor irrigationSensor("irrigation_active");
+HABinarySensor lightConfig("light_active");
 HASensor dhtTempSensor("dht_temperature");
 HASensor dhtHumSensor("dht_humidity");
 
@@ -63,6 +66,7 @@ void setup() {
   lightSensor.setUnitOfMeasurement("lux");
 
   irrigationSensor.setName("Sistema de irrigação");
+  lightConfig.setName("Configuração de luz");
 
   dhtTempSensor.setName("Temperatura DHT22");
   dhtTempSensor.setUnitOfMeasurement("°C");
@@ -91,9 +95,14 @@ void loop() {
   }
 
   // NOVO: Lógica para o LED vermelho de baixa luminosidade
-  if (lightLevel < LOW_LIGHT_THRESHOLD) {
+  if (lightLevel < LOW_LIGHT_THRESHOLD && !lightActive) {
+    lightActive = true;
     digitalWrite(RED_LED_PIN, HIGH); // Acende o LED vermelho se estiver escuro
-  } else {
+    lightConfig.setState(true); // Atualiza o estado do sensor de luz
+    Serial.println("Nível de luz baixo: LED vermelho aceso");
+  } else if(lightActive && lightLevel >= LOW_LIGHT_THRESHOLD) {
+    lightConfig.setState(false); // Atualiza o estado do sensor de luz
+    Serial.println("Nível de luz alto: LED vermelho apagado");
     digitalWrite(RED_LED_PIN, LOW); // Apaga o LED vermelho se estiver claro
   }
 
